@@ -1,0 +1,49 @@
+#! /bin/sh
+# LatencyTest.sh - a shell script that runs a ping test to constantly measure network latency.
+
+# Usage: sh LatencyTest.sh [ -p host-to-ping ] [ -t duration ]
+
+# Options:
+# -p | --ping: Host to ping to measure latency (default - gstatic.com)
+# -t | --time: Duration for how long the ping test should run - (default - 60 seconds)
+
+PINGHOST="gstatic.com"
+TESTDUR=60
+
+# Create temp file for ping results
+PINGFILE=$(mktemp /tmp/measurepings.XXXXXX) || exit 1
+
+# Function to constantly print latency
+print_latency() {
+    echo "Pinging $PINGHOST..."
+    while read -r line; do
+        if echo "$line" | grep -q "time="; then
+            latency=$(echo "$line" | sed 's/^.*time=\([^ ]*\) ms/\1/')
+            echo "Latency: $latency ms"
+        fi
+    done < "$1"
+}
+
+# Read the options
+while [ $# -gt 0 ]
+do
+    case "$1" in
+        -p|--ping)
+            case "$2" in
+                "") echo "Missing ping host" ; exit 1 ;;
+                *) PINGHOST=$2 ; shift 2 ;;
+            esac ;;
+        -t|--time) 
+            case "$2" in
+                "") echo "Missing duration" ; exit 1 ;;
+                *) TESTDUR=$2 ; shift 2 ;;
+            esac ;;
+        *) echo "Usage: sh LatencyTest.sh [ -p host-to-ping ] [ -t duration ]" ; exit 1 ;;
+    esac
+done
+
+# Start the ping test and constantly print latency
+ping -c $TESTDUR $PINGHOST | tee $PINGFILE | print_latency
+
+# Clean up
+rm $PINGFILE
