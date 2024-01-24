@@ -1,0 +1,70 @@
+#! /bin/sh
+# LatencyTest.sh - a shell script that runs a ping test to measure network latency.
+
+# Usage: sh LatencyTest.sh [ -p host-to-ping ] [ -t duration ]
+
+# Options:
+# -p | --ping: Host to ping to measure latency (default - gstatic.com)
+# -t | --time: Duration for how long the ping test should run - (default - 60 seconds)
+
+PINGHOST="gstatic.com"
+TESTDUR=60
+
+# Create temp file for ping results
+PINGFILE=$(mktemp /tmp/measurepings.XXXXXX) || exit 1
+
+# Function to summarize ping results
+summarize_pings() {     
+    grep "time=" < "$1" | \
+    sed 's/^.*time=\([^ ]*\) ms/\1/' | \
+    sort -n | \
+    awk 'BEGIN {numdrops=0; numrows=0} \
+        { \
+          if ( $0 ~ /timeout/ ) { \
+              numdrops += 1; \
+          } else { \
+            numrows += 1; \
+            arr[numrows]=$1; sum+=$1; \
+          } \
+        } \
+        END { \
+          pc10="-"; pc90="-"; med="-"; \
+          if (numrows == 0) {numrows=1} \
+          if (numrows>=10) \
+          { 
+            ix=int(numrows/10); if (ix==1) {ix+=1}; pc10=arr[ix]; \
+            ix=int(numrows*9/10);pc90=arr[ix]; \
+            if (numrows%2==1) med=arr[(numrows+1)/2]; else med=(arr[numrows/2] + arr[numrows/2 + 1]) / 2; \
+          }; \
+          pktloss = numdrops/(numdrops+numrows) * 100; \
+          printf("\n  Latency: (in msec, %d pings, %4.2f%% packet loss)\n      Min: %4.3f \n    10pct: %4.3f \n   Median: %4.3f \n      Avg: %4.3f \n    90pct: %4.3f \n      Max: %4.3f\n", numrows, pktloss, arr[1], pc10, med, sum/numrows, pc90, arr[numrows] )\
+        }'
+}
+
+# Read the options
+while [ $# -gt 0 ] 
+do
+    case "$1" in
+        -p|--ping)
+            case "$2" in
+                "") echo "Missing ping host" ; exit 1 ;;
+                *) PINGHOST=$2 ; shift 2 ;;
+            esac ;;
+        -t|--time) 
+            case "$2" in
+                "") echo "Missing duration" ; exit 1 ;;
+                *) TESTDUR=$2 ; shift 2 ;;
+            esac ;;
+        *) echo "Usage: sh LatencyTest.sh [ -p host-to-ping ] [ -t duration ]" ; exit 1 ;;
+    esac
+done
+
+# Start the ping test
+echo "Pinging $PINGHOST for $TESTDUR seconds. This measures network latency."
+ping -c $TESTDUR $PINGHOST > $PINGFILE
+
+# Summarize and display ping statistics
+summarize_pings $PINGFILE
+
+# Clean up
+rm $PINGFILE
